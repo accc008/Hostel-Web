@@ -43,6 +43,11 @@
                                         <h1 class="h4 text-gray-900 mb-4">Welcome!</h1>
                                         <h1 class="h4 text-gray-900 mb-4">Owner of Hostel!</h1>
                                     </div>
+                                    {% if error %}
+                                    <div class="alert alert-danger" role="alert">
+                                        <i class="fas fa-exclamation-triangle"></i> {{ error }}
+                                    </div>
+                                    {% endif %}
                                     <form class="user" action="/owner" method="POST">
                                         <div class="form-group">
                                             <input type="email" name="myemail" class="form-control form-control-user" id="exampleInputEmail" aria-describedby="emailHelp" placeholder="Enter Email Address..." required="required">

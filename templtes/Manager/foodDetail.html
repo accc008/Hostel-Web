@@ -196,14 +196,13 @@
                         {% for id in MyList %}
                         <tr>
                            <form action="/deleteFood" method="POST">
-                            <td><input style="display: none;" name="myindex" value="{{loop.index}}"></input>{{loop.index}}</td>
-                            <td>{{id.name}}</td>
-                            <td>{{id.price}}</td>
-                            <td>{{id.quantity}}</td>
-                            <td><button type="submit" style="box-shadow: none;" class="btn btn-block">
-                                <span>
-                                    <i class="fas fa-trash"></i>
-                                </span>
+                            <input type="hidden" name="foodname" value="{{id.name}}">
+                            <td>{{loop.index}}</td>
+                            <td><strong>{{id.name}}</strong></td>
+                            <td>₹{{id.price}}</td>
+                            <td><span class="badge badge-primary">{{id.quantity}}</span></td>
+                            <td><button type="submit" style="box-shadow: none;" class="btn btn-danger btn-sm" onclick="return confirm('Delete food {{id.name}}?');">
+                                <i class="fas fa-trash"></i>
                             </button></td>
                             </form>
                         </tr>

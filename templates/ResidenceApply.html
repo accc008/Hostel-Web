@@ -63,6 +63,16 @@
     <div class="row">
         <div class="col-lg-1"></div>
         <div class="col-lg-10">
+            {% if success %}
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+                <i class="fas fa-check-circle"></i> {{ success }}
+            </div>
+            {% endif %}
+            {% if error %}
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+                <i class="fas fa-exclamation-triangle"></i> {{ error }}
+            </div>
+            {% endif %}
             <form class="user" action="/applyResidence" method="POST">
                 <div class="form-group row">
                     <div class="col-sm-6 mb-3 mb-sm-0">

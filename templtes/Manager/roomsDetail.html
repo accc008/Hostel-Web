@@ -186,29 +186,30 @@
                 <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
                     <thead>
                         <tr>
-                            <th> # </th>
+                            <th>#</th>
                             <th>Type of Room</th>
                             <th>Price of Room</th>
                             <th>Total Rooms</th>
                             <th>Booked Rooms</th>
-                            <th>Started Room (Booking)</th>
-                            <td>Action</td>
+                            <th>Available Rooms</th>
+                            <th>Starting Room No</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for room in myList%}
+                        {% for room in MyList %}
                         <tr>  
                            <form action="/deleteRoom" method="POST">
-                            <td><input style="display: none;" name="myindex" value="{{loop.index}}"></input>{{loop.index}}</td>
-                            <th>{{room.typeRoom}}</th>
-                            <th>{{room.priceRoom}}</th>
-                            <th>{{room.totalRooms}}</th>
-                            <th>{{room.bookRooms}}</th>
-                            <th>{{room.startingRoom}}</th>
-                            <td><button type="submit" style="box-shadow: none;" class="btn btn-block">
-                                <span>
-                                    <i class="fas fa-trash"></i>
-                                </span>
+                            <input type="hidden" name="typeroom" value="{{ room.typeRoom }}">
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ room.typeRoom }}</strong></td>
+                            <td>₹{{ room.priceRoom }}</td>
+                            <td>{{ room.totalRooms }}</td>
+                            <td><span class="badge badge-warning">{{ room.bookRooms }}</span></td>
+                            <td><span class="badge badge-success">{{ room.totalRooms - room.bookRooms }}</span></td>
+                            <td>{{ room.startingRoom }}</td>
+                            <td><button type="submit" style="box-shadow: none;" class="btn btn-danger btn-sm" onclick="return confirm('Delete room category {{ room.typeRoom }}?');">
+                                <i class="fas fa-trash"></i>
                             </button></td>
                             </form>
                         </tr>

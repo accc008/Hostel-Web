@@ -6,7 +6,7 @@
 <meta name="description" content="">
 <meta name="author" content="">
 
-<title>Hostel Managment System</title>
+<title>Hostel Management System - Residence Applications</title>
 
 <!-- Custom fonts for this template -->
 <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.15.4/css/all.min.css" rel="stylesheet" type="text/css">
@@ -153,7 +153,7 @@
         Logout
     </div>
     <li class="nav-item">
-        <a class="nav-link" href="#" data-toggle="modal" data-target="#logoutModal">
+        <a class="nav-link" href="/logout">
             <i class="fas fa-sign-out-alt"></i>
             Logout
         </a>
@@ -173,39 +173,77 @@
 
     <!-- Page Heading -->
     <div class="d-sm-flex align-items-center justify-content-between mb-4">
-        <h1 class="h3 mb-0 text-gray-800">Apply For Residents Detail</h1>
+        <h1 class="h3 mb-0 text-gray-800">Applications For Residence</h1>
     </div>
-    <p class="mb-4">Here is the complete Data of All Applicant Applicants that data contains Name,pin and Email of Account that will make Manager.Any <a class="text-success" href="#">Updates </a>in Data You Can See Here.</p>
+    <p class="mb-4">Review public hostel residence applications. Approving an applicant automatically creates a resident account with their application credentials, enabling immediate login at the resident portal.</p>
+
+    {% if success %}
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        <i class="fas fa-check-circle"></i> {{ success }}
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-danger alert-dismissible fade show" role="alert">
+        <i class="fas fa-exclamation-triangle"></i> {{ error }}
+        <button type="button" class="close" data-dismiss="alert" aria-label="Close">
+            <span aria-hidden="true">&times;</span>
+        </button>
+    </div>
+    {% endif %}
+
     <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-success">Applications For Residents</h6>
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-success">Pending & Processed Applications</h6>
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
-                    <thead>
+                <table class="table table-bordered table-hover" id="dataTable" width="100%" cellspacing="0">
+                    <thead class="thead-light">
                         <tr>
-                            <th>#</th>
-                            <th>Name of Applicant</th>
-                            <th>Email of Applicant</th>
-                            <th>Pin of Applicant</th>
-                            <th>Action</th>
+                            <th style="width: 50px;">#</th>
+                            <th>Applicant Name</th>
+                            <th>Email Address</th>
+                            <th style="width: 120px;">Status</th>
+                            <th style="width: 220px;">Manager Actions</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for id in MyList %}
+                        {% for req in MyList %}
                         <tr>
-                            <form action="/deleteResidentapply" method="POST">
-                               <td><input style="display: none;" name="myindex" value="{{loop.index}}"></input>{{loop.index}}</td>
-                               <td>{{id.name}}</td>
-                               <td>{{id.email}}</td>
-                               <td>{{id.pin}}</td>
-                               <td><button type="submit" style="box-shadow: none;" class="btn btn-block">
-                                <span>
-                                    <i class="fas fa-trash"></i>
-                                </span>
-                            </button></td>
-                            </form>
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ req.name }}</strong></td>
+                            <td>{{ req.email }}</td>
+                            <td>
+                                {% if req.status == 'approved' %}
+                                <span class="badge badge-success px-2 py-1"><i class="fas fa-check"></i> Approved</span>
+                                {% elif req.status == 'rejected' %}
+                                <span class="badge badge-danger px-2 py-1"><i class="fas fa-times"></i> Rejected</span>
+                                {% else %}
+                                <span class="badge badge-warning px-2 py-1"><i class="fas fa-clock"></i> Pending</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <div class="btn-group" role="group">
+                                    {% if req.status != 'approved' %}
+                                    <form action="/approveResidenceRequest" method="POST" class="d-inline mr-2">
+                                        <input type="hidden" name="email" value="{{ req.email }}">
+                                        <button type="submit" class="btn btn-sm btn-success" title="Approve and create resident account">
+                                            <i class="fas fa-user-check"></i> Approve
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                    <form action="/deleteResidentapply" method="POST" class="d-inline">
+                                        <input type="hidden" name="email" value="{{ req.email }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete application record">
+                                            <i class="fas fa-trash"></i> Delete
+                                        </button>
+                                    </form>
+                                </div>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

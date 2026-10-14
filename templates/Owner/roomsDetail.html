@@ -144,23 +144,25 @@
                 <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
                     <thead>
                         <tr>
-                            <th> # </th>
+                            <th>#</th>
                             <th>Type of Room</th>
                             <th>Price of Room</th>
                             <th>Total Rooms</th>
                             <th>Booked Rooms</th>
-                            <th>Started Room (Booking)</th>
+                            <th>Available Rooms</th>
+                            <th>Starting Room No</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for room in myList%}
+                        {% for room in MyList %}
                         <tr>
-                            <th name="number">{{loop.index}}</th>
-                            <th>{{room.typeRoom}}</th>
-                            <th>{{room.priceRoom}}</th>
-                            <th>{{room.totalRooms}}</th>
-                            <th>{{room.bookRooms}}</th>
-                            <th>{{room.startingRoom}}</th>
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ room.typeRoom }}</strong></td>
+                            <td>₹{{ room.priceRoom }}</td>
+                            <td>{{ room.totalRooms }}</td>
+                            <td><span class="badge badge-warning">{{ room.bookRooms }}</span></td>
+                            <td><span class="badge badge-success">{{ room.totalRooms - room.bookRooms }}</span></td>
+                            <td>{{ room.startingRoom }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>

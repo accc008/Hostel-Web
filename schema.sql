@@ -77,7 +77,9 @@ CREATE TABLE IF NOT EXISTS residence_requests (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(120) NOT NULL,
-    pin VARCHAR(50) NOT NULL
+    pin VARCHAR(255) NOT NULL,
+    status VARCHAR(20) DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 10. Job Applications Table
@@ -85,7 +87,8 @@ CREATE TABLE IF NOT EXISTS job_requests (
     id SERIAL PRIMARY KEY,
     name VARCHAR(100) NOT NULL,
     email VARCHAR(120) NOT NULL,
-    job VARCHAR(100) NOT NULL
+    job VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 11. Food Orders Table

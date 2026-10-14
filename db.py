@@ -2,6 +2,7 @@ import os
 import json
 import sqlite3
 from urllib.parse import urlparse
+from werkzeug.security import generate_password_hash, check_password_hash
 
 # Check for PostgreSQL database URL from environment (Supabase, Neon, or Vercel Postgres)
 DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") or os.environ.get("SUPABASE_DB_URL")
@@ -9,9 +10,34 @@ DATABASE_URL = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL") 
 # Resolve project path
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
-# Data classes matching original application structure
+
+# --- Password Hashing Helpers ---
+def hash_pin(pin):
+    """Hash raw PIN/password using Werkzeug if not already hashed."""
+    if not pin:
+        return ""
+    pin_str = str(pin).strip()
+    if pin_str.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+        return pin_str
+    return generate_password_hash(pin_str)
+
+
+def verify_pin(stored_pin, input_pin):
+    """Verify input PIN against stored PIN (supports Werkzeug hash and legacy plain text)."""
+    if not stored_pin or input_pin is None:
+        return False
+    stored_str = str(stored_pin).strip()
+    input_str = str(input_pin).strip()
+    if stored_str.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+        return check_password_hash(stored_str, input_str)
+    # Legacy plain-text fallback
+    return stored_str == input_str
+
+
+# --- Data Classes Matching Application Structure ---
 class Id:
-    def __init__(self, nameR, emailR, pinR, no=0, typeRoom="None", expen=0):
+    def __init__(self, nameR, emailR, pinR, no=0, typeRoom="None", expen=0, id=None):
+        self.id = id
         self.name = nameR
         self.email = emailR
         self.pin = str(pinR)
@@ -26,28 +52,32 @@ class Id:
 
 
 class OrderedFoods:
-    def __init__(self, name, quantity, price):
+    def __init__(self, name, quantity, price, id=None):
+        self.id = id
         self.namefood = name
         self.quantity = int(quantity)
         self.price = float(price)
 
 
 class workers:
-    def __init__(self, name, job, salary):
+    def __init__(self, name, job, salary, id=None):
+        self.id = id
         self.name = name
         self.job = job
         self.salary = float(salary)
 
 
 class Foods:
-    def __init__(self, name, price, quantity):
+    def __init__(self, name, price, quantity, id=None):
+        self.id = id
         self.name = name
         self.price = float(price)
         self.quantity = int(quantity)
 
 
 class Rooms:
-    def __init__(self, typeR, priceR, totalR, book, sRoom):
+    def __init__(self, typeR, priceR, totalR, book, sRoom, id=None):
+        self.id = id
         self.typeRoom = typeR
         self.priceRoom = float(priceR)
         self.totalRooms = int(totalR)
@@ -56,62 +86,82 @@ class Rooms:
 
 
 class RequestResidence:
-    def __init__(self, name, email, pin):
+    def __init__(self, name, email, pin, status="pending", created_at=None, id=None):
+        self.id = id
         self.name = name
         self.email = email
         self.pin = str(pin)
+        self.status = status or "pending"
+        self.created_at = str(created_at) if created_at else ""
 
 
 class RequestJobs:
-    def __init__(self, name, email, job):
+    def __init__(self, name, email, job, id=None):
+        self.id = id
         self.name = name
         self.email = email
         self.job = job
 
 
 class ManagerUser:
-    def __init__(self, name, email, pin):
+    def __init__(self, name, email, pin, id=None):
+        self.id = id
         self.name = name
         self.email = email
         self.pin = str(pin)
 
 
 class OwnerUser:
-    def __init__(self, name, email, pin):
+    def __init__(self, name, email, pin, id=None):
+        self.id = id
         self.name = name
         self.email = email
         self.pin = str(pin)
 
 
+# --- Authoritative Database Layer ---
 class Database:
-    def __init__(self):
+    def __init__(self, db_path=None):
         self.is_postgres = False
         self.conn_str = DATABASE_URL
 
         if self.conn_str and ("postgres" in self.conn_str or "postgresql" in self.conn_str):
-            # Ensure protocol is postgresql:// for SQLAlchemy/pg8000/psycopg2
+            # Ensure protocol is postgresql:// for psycopg2/pg8000
             if self.conn_str.startswith("postgres://"):
                 self.conn_str = self.conn_str.replace("postgres://", "postgresql://", 1)
             self.is_postgres = True
             print("[DB] Using Cloud PostgreSQL / Supabase Database")
         else:
-            # Use SQLite in /tmp for Vercel serverless or data/hostel.db locally
+            # Enforce persistent database requirement on Vercel
             if os.environ.get("VERCEL"):
-                self.sqlite_path = "/tmp/hostel.db"
+                raise RuntimeError(
+                    "CRITICAL CONFIGURATION ERROR: Production deployment on Vercel requires "
+                    "DATABASE_URL (or POSTGRES_URL / SUPABASE_DB_URL) to be set in Vercel Environment Variables. "
+                    "Ephemeral SQLite in /tmp/hostel.db has been permanently disabled to prevent silent data loss. "
+                    "Please configure your Supabase PostgreSQL connection string in the Vercel Project Settings."
+                )
+
+            if db_path:
+                self.sqlite_path = db_path
+            elif os.environ.get("HOSTEL_DB_PATH"):
+                self.sqlite_path = os.environ.get("HOSTEL_DB_PATH")
             else:
                 data_dir = os.path.join(BASE_DIR, "data")
                 os.makedirs(data_dir, exist_ok=True)
                 self.sqlite_path = os.path.join(data_dir, "hostel.db")
-            print(f"[DB] Using SQLite Database at {self.sqlite_path}")
+            print(f"[DB] Using Local SQLite Database at {self.sqlite_path}")
 
         self.init_tables()
         self.seed_if_empty()
 
     def get_connection(self):
+        """Get an active database connection with row access."""
         if self.is_postgres:
             try:
                 import psycopg2
-                return psycopg2.connect(self.conn_str)
+                import psycopg2.extras
+                conn = psycopg2.connect(self.conn_str)
+                return conn
             except Exception:
                 import pg8000
                 p = urlparse(self.conn_str)
@@ -124,12 +174,18 @@ class Database:
                     ssl_context=True
                 )
         else:
-            conn = sqlite3.connect(self.sqlite_path)
+            conn = sqlite3.connect(self.sqlite_path, timeout=30.0)
             conn.row_factory = sqlite3.Row
             return conn
 
+    def _format_query(self, query):
+        """Translate SQL parameter syntax between Postgres (%s) and SQLite (?)."""
+        if self.is_postgres:
+            return query
+        return query.replace("%s", "?")
+
     def init_tables(self):
-        """Create tables if they do not exist."""
+        """Create authoritative tables and perform migrations if needed."""
         auto_inc = "SERIAL" if self.is_postgres else "INTEGER"
         pk = f"id {auto_inc} PRIMARY KEY" if self.is_postgres else "id INTEGER PRIMARY KEY AUTOINCREMENT"
 
@@ -199,14 +255,17 @@ class Database:
             {pk},
             name TEXT NOT NULL,
             email TEXT NOT NULL,
-            pin TEXT NOT NULL
+            pin TEXT NOT NULL,
+            status TEXT DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS job_requests (
             {pk},
             name TEXT NOT NULL,
             email TEXT NOT NULL,
-            job TEXT NOT NULL
+            job TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
 
         CREATE TABLE IF NOT EXISTS ordered_foods (
@@ -220,344 +279,639 @@ class Database:
         );
         """
         conn = self.get_connection()
-        cur = conn.cursor()
-        for stmt in schema.strip().split(";"):
-            stmt_clean = stmt.strip()
-            if stmt_clean:
-                cur.execute(stmt_clean)
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            with conn:
+                cur = conn.cursor()
+                for stmt in schema.strip().split(";"):
+                    stmt_clean = stmt.strip()
+                    if stmt_clean:
+                        cur.execute(stmt_clean)
+
+                # Migrations for existing SQLite databases (ensure status column exists)
+                if not self.is_postgres:
+                    try:
+                        cur.execute("PRAGMA table_info(residence_requests)")
+                        cols = [r[1] for r in cur.fetchall()]
+                        if cols and "status" not in cols:
+                            cur.execute("ALTER TABLE residence_requests ADD COLUMN status TEXT DEFAULT 'pending'")
+                        if cols and "created_at" not in cols:
+                            cur.execute("ALTER TABLE residence_requests ADD COLUMN created_at TEXT DEFAULT ''")
+                    except Exception:
+                        pass
+                cur.close()
+        finally:
+            conn.close()
 
     def seed_if_empty(self):
-        """Seed initial Indian dataset if tables are empty."""
+        """Idempotently seed the Indian dataset if tables are empty. Never wipes existing data."""
         conn = self.get_connection()
-        cur = conn.cursor()
-        cur.execute("SELECT COUNT(*) FROM owners")
-        count = cur.fetchone()[0]
-        if count == 0:
-            print("[DB] Database is empty. Seeding Indian dataset...")
-            # Load from users_credentials.json if available
-            creds_path = os.path.join(BASE_DIR, "users_credentials.json")
-            if os.path.exists(creds_path):
-                with open(creds_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
+        try:
+            with conn:
+                cur = conn.cursor()
 
-                # Seed Owner
-                for u in data.get("users", {}).get("owner", []):
-                    self.execute_insert(conn, "INSERT INTO owners (name, email, pin) VALUES (%s, %s, %s)",
-                                        (u["name"], u["email"], str(u["password"])))
+                # 1. Seed Owner
+                cur.execute(self._format_query("SELECT COUNT(*) FROM owners"))
+                if cur.fetchone()[0] == 0:
+                    creds_path = os.path.join(BASE_DIR, "users_credentials.json")
+                    if os.path.exists(creds_path):
+                        with open(creds_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for u in data.get("users", {}).get("owner", []):
+                            cur.execute(self._format_query("INSERT INTO owners (name, email, pin) VALUES (%s, %s, %s)"),
+                                        (u["name"], u["email"], hash_pin(u["password"])))
+                    else:
+                        cur.execute(self._format_query("INSERT INTO owners (name, email, pin) VALUES (%s, %s, %s)"),
+                                    ("Rajesh Sharma", "rajesh.sharma@hostel.in", hash_pin("12345")))
 
-                # Seed Managers (2 managers)
-                for u in data.get("users", {}).get("managers", []):
-                    self.execute_insert(conn, "INSERT INTO managers (name, email, pin) VALUES (%s, %s, %s)",
-                                        (u["name"], u["email"], str(u["password"])))
+                # 2. Seed Managers
+                cur.execute(self._format_query("SELECT COUNT(*) FROM managers"))
+                if cur.fetchone()[0] == 0:
+                    creds_path = os.path.join(BASE_DIR, "users_credentials.json")
+                    if os.path.exists(creds_path):
+                        with open(creds_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for u in data.get("users", {}).get("managers", []):
+                            cur.execute(self._format_query("INSERT INTO managers (name, email, pin) VALUES (%s, %s, %s)"),
+                                        (u["name"], u["email"], hash_pin(u["password"])))
 
-                # Seed Residents (16 residents)
-                for u in data.get("users", {}).get("residents", []):
-                    self.execute_insert(conn, "INSERT INTO residents (name, email, pin, room_no, room_type, expenditures) VALUES (%s, %s, %s, %s, %s, %s)",
-                                        (u["name"], u["email"], str(u["password"]), u.get("room_no", 0), u.get("room_type", "None"), float(u.get("expenditures_inr", 0))))
+                # 3. Seed Residents
+                cur.execute(self._format_query("SELECT COUNT(*) FROM residents"))
+                if cur.fetchone()[0] == 0:
+                    creds_path = os.path.join(BASE_DIR, "users_credentials.json")
+                    if os.path.exists(creds_path):
+                        with open(creds_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for u in data.get("users", {}).get("residents", []):
+                            cur.execute(self._format_query(
+                                "INSERT INTO residents (name, email, pin, room_no, room_type, expenditures) VALUES (%s, %s, %s, %s, %s, %s)"),
+                                (u["name"], u["email"], hash_pin(u["password"]), u.get("room_no", 0), u.get("room_type", "None"), float(u.get("expenditures_inr", 0))))
 
-                # Seed Workers
-                for w in data.get("staff_workers", []):
-                    self.execute_insert(conn, "INSERT INTO workers (name, job, salary) VALUES (%s, %s, %s)",
+                # 4. Seed Workers
+                cur.execute(self._format_query("SELECT COUNT(*) FROM workers"))
+                if cur.fetchone()[0] == 0:
+                    creds_path = os.path.join(BASE_DIR, "users_credentials.json")
+                    if os.path.exists(creds_path):
+                        with open(creds_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for w in data.get("staff_workers", []):
+                            cur.execute(self._format_query("INSERT INTO workers (name, job, salary) VALUES (%s, %s, %s)"),
                                         (w["name"], w["job"], float(w["salary_inr"])))
 
-                # Seed Foods
-                for fd in data.get("canteen_foods", []):
-                    self.execute_insert(conn, "INSERT INTO foods (name, price, quantity) VALUES (%s, %s, %s)",
+                # 5. Seed Foods
+                cur.execute(self._format_query("SELECT COUNT(*) FROM foods"))
+                if cur.fetchone()[0] == 0:
+                    creds_path = os.path.join(BASE_DIR, "users_credentials.json")
+                    if os.path.exists(creds_path):
+                        with open(creds_path, "r", encoding="utf-8") as f:
+                            data = json.load(f)
+                        for fd in data.get("canteen_foods", []):
+                            cur.execute(self._format_query("INSERT INTO foods (name, price, quantity) VALUES (%s, %s, %s)"),
                                         (fd["name"], float(fd["price_inr"]), int(fd["quantity"])))
 
-            # Seed Rooms
-            room_seed = [
-                ("Single Deluxe", 12000.0, 10, 4, 101),
-                ("Double Sharing", 8000.0, 15, 4, 201),
-                ("Triple Sharing", 5500.0, 12, 4, 301),
-                ("Four Sharing", 4000.0, 10, 4, 401)
-            ]
-            for r in room_seed:
-                self.execute_insert(conn, "INSERT INTO rooms (type_room, price_room, total_rooms, book_rooms, starting_room) VALUES (%s, %s, %s, %s, %s)", r)
+                # 6. Seed Rooms
+                cur.execute(self._format_query("SELECT COUNT(*) FROM rooms"))
+                if cur.fetchone()[0] == 0:
+                    room_seed = [
+                        ("Single Deluxe", 12000.0, 10, 4, 101),
+                        ("Double Sharing", 8000.0, 15, 4, 201),
+                        ("Triple Sharing", 5500.0, 12, 4, 301),
+                        ("Four Sharing", 4000.0, 10, 4, 401)
+                    ]
+                    for r in room_seed:
+                        cur.execute(self._format_query("INSERT INTO rooms (type_room, price_room, total_rooms, book_rooms, starting_room) VALUES (%s, %s, %s, %s, %s)"), r)
 
-            # Seed Messages
-            msg_seed = [
-                ("Namaste Vikram, please ensure the room inspection for block 2 is completed today.", "owner"),
-                ("Namaste Sir, room inspection for 2nd and 3rd floor is done. Everything is in order.", "admin"),
-                ("Good. Also verify all new admissions before allocating room keys.", "owner"),
-                ("Yes Sir, all documents and fee receipts are being verified at reception.", "admin"),
-                ("Priya is managing the warden desk for student welfare and medical kits.", "admin"),
-                ("Excellent, keep me updated on the monthly mess expenditure report.", "owner")
-            ]
-            for m in msg_seed:
-                self.execute_insert(conn, "INSERT INTO messages (message, sender) VALUES (%s, %s)", m)
+                # 7. Seed Messages
+                cur.execute(self._format_query("SELECT COUNT(*) FROM messages"))
+                if cur.fetchone()[0] == 0:
+                    msg_seed = [
+                        ("Namaste Vikram, please ensure the room inspection for block 2 is completed today.", "owner"),
+                        ("Namaste Sir, room inspection for 2nd and 3rd floor is done. Everything is in order.", "admin"),
+                        ("Good. Also verify all new admissions before allocating room keys.", "owner"),
+                        ("Yes Sir, all documents and fee receipts are being verified at reception.", "admin"),
+                        ("Priya is managing the warden desk for student welfare and medical kits.", "admin"),
+                        ("Excellent, keep me updated on the monthly mess expenditure report.", "owner")
+                    ]
+                    for m in msg_seed:
+                        cur.execute(self._format_query("INSERT INTO messages (message, sender) VALUES (%s, %s)"), m)
 
-            # Seed Complaints
-            comp_seed = [
-                ("Room 102 hot water geyser requires inspection", "Ananya Gupta"),
-                ("Wi-Fi router on 3rd floor frequent signal drops", "Ishaan Joshi"),
-                ("Study room AC filter cleaning requested", "Siddharth Malhotra")
-            ]
-            for c in comp_seed:
-                self.execute_insert(conn, "INSERT INTO complaints (complain, resident_name) VALUES (%s, %s)", c)
+                # 8. Seed Complaints
+                cur.execute(self._format_query("SELECT COUNT(*) FROM complaints"))
+                if cur.fetchone()[0] == 0:
+                    comp_seed = [
+                        ("Room 102 hot water geyser requires inspection", "Ananya Gupta"),
+                        ("Wi-Fi router on 3rd floor frequent signal drops", "Ishaan Joshi"),
+                        ("Study room AC filter cleaning requested", "Siddharth Malhotra")
+                    ]
+                    for c in comp_seed:
+                        cur.execute(self._format_query("INSERT INTO complaints (complain, resident_name) VALUES (%s, %s)"), c)
 
-            # Seed Residence Requests
-            rr_seed = [
-                ("Arjun Kapoor", "arjun.kapoor@newadmit.in", "ak2026"),
-                ("Kavita Sen", "kavita.sen@newadmit.in", "ks2026")
-            ]
-            for rr in rr_seed:
-                self.execute_insert(conn, "INSERT INTO residence_requests (name, email, pin) VALUES (%s, %s, %s)", rr)
+                # 9. Seed Residence Requests
+                cur.execute(self._format_query("SELECT COUNT(*) FROM residence_requests"))
+                if cur.fetchone()[0] == 0:
+                    rr_seed = [
+                        ("Arjun Kapoor", "arjun.kapoor@newadmit.in", hash_pin("ak2026"), "pending"),
+                        ("Kavita Sen", "kavita.sen@newadmit.in", hash_pin("ks2026"), "pending")
+                    ]
+                    for rr in rr_seed:
+                        cur.execute(self._format_query("INSERT INTO residence_requests (name, email, pin, status) VALUES (%s, %s, %s, %s)"), rr)
 
-            # Seed Job Requests
-            jr_seed = [
-                ("Deepak Verma", "deepak.verma@work.in", "Cook Assistant"),
-                ("Santosh Patil", "santosh.patil@work.in", "Night Security Guard")
-            ]
-            for jr in jr_seed:
-                self.execute_insert(conn, "INSERT INTO job_requests (name, email, job) VALUES (%s, %s, %s)", jr)
+                # 10. Seed Job Requests
+                cur.execute(self._format_query("SELECT COUNT(*) FROM job_requests"))
+                if cur.fetchone()[0] == 0:
+                    jr_seed = [
+                        ("Deepak Verma", "deepak.verma@work.in", "Cook Assistant"),
+                        ("Santosh Patil", "santosh.patil@work.in", "Night Security Guard")
+                    ]
+                    for jr in jr_seed:
+                        cur.execute(self._format_query("INSERT INTO job_requests (name, email, job) VALUES (%s, %s, %s)"), jr)
 
-            # Seed Ordered Foods
-            of_seed = [
-                ("Masala Dosa", 1, 60.0, "Aarav Mehta", "1001"),
-                ("Paneer Butter Masala", 1, 150.0, "Ananya Gupta", "1002"),
-                ("Butter Naan (2 pcs)", 1, 40.0, "Ananya Gupta", "1002"),
-                ("Special Veg Thali", 1, 120.0, "Rohan Verma", "1003"),
-                ("Chicken Biryani", 1, 180.0, "Siddharth Malhotra", "1011"),
-                ("Gulab Jamun (2 pcs)", 1, 40.0, "Aarav Mehta", "1001")
-            ]
-            for of in of_seed:
-                self.execute_insert(conn, "INSERT INTO ordered_foods (food_name, quantity, price, resident_name, pin) VALUES (%s, %s, %s, %s, %s)", of)
+                # 11. Seed Ordered Foods
+                cur.execute(self._format_query("SELECT COUNT(*) FROM ordered_foods"))
+                if cur.fetchone()[0] == 0:
+                    of_seed = [
+                        ("Masala Dosa", 1, 60.0, "Aarav Mehta", "1001"),
+                        ("Paneer Butter Masala", 1, 150.0, "Ananya Gupta", "1002"),
+                        ("Butter Naan (2 pcs)", 1, 40.0, "Ananya Gupta", "1002"),
+                        ("Special Veg Thali", 1, 120.0, "Rohan Verma", "1003"),
+                        ("Chicken Biryani", 1, 180.0, "Siddharth Malhotra", "1011"),
+                        ("Gulab Jamun (2 pcs)", 1, 40.0, "Aarav Mehta", "1001")
+                    ]
+                    for of in of_seed:
+                        cur.execute(self._format_query("INSERT INTO ordered_foods (food_name, quantity, price, resident_name, pin) VALUES (%s, %s, %s, %s, %s)"), of)
 
-            conn.commit()
-            print("[DB] Seeding complete with Indian dataset!")
-
-        cur.close()
-        conn.close()
-
-    def execute_insert(self, conn, query, params):
-        cur = conn.cursor()
-        q = query if self.is_postgres else query.replace("%s", "?")
-        cur.execute(q, params)
-        cur.close()
+                cur.close()
+        finally:
+            conn.close()
 
     def query(self, sql, params=()):
+        """Execute read query and return all rows."""
         conn = self.get_connection()
-        cur = conn.cursor()
-        q = sql if self.is_postgres else sql.replace("%s", "?")
-        cur.execute(q, params)
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
-        return rows
+        try:
+            cur = conn.cursor()
+            cur.execute(self._format_query(sql), params)
+            rows = cur.fetchall()
+            cur.close()
+            return rows
+        finally:
+            conn.close()
 
     def execute(self, sql, params=()):
+        """Execute single write query with atomic commit."""
         conn = self.get_connection()
-        cur = conn.cursor()
-        q = sql if self.is_postgres else sql.replace("%s", "?")
-        cur.execute(q, params)
-        conn.commit()
-        cur.close()
-        conn.close()
+        try:
+            with conn:
+                cur = conn.cursor()
+                cur.execute(self._format_query(sql), params)
+                cur.close()
+        finally:
+            conn.close()
 
     # --- OWNER METHODS ---
     def get_owner(self, email=None, pin=None):
+        """Retrieve owner. Verifies and auto-upgrades legacy password to hash if matched."""
         if email and pin:
-            rows = self.query("SELECT name, email, pin FROM owners WHERE email = %s AND pin = %s", (email, str(pin)))
+            rows = self.query("SELECT name, email, pin, id FROM owners WHERE email = %s", (email.strip(),))
+            if rows:
+                r = rows[0]
+                stored_pin = str(r[2])
+                if verify_pin(stored_pin, pin):
+                    # Auto-upgrade plain-text password to hash
+                    if not stored_pin.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+                        self.update_owner_pin(email.strip(), pin)
+                    return OwnerUser(r[0], r[1], stored_pin, id=r[3])
+            return None
         elif email:
-            rows = self.query("SELECT name, email, pin FROM owners WHERE email = %s", (email,))
+            rows = self.query("SELECT name, email, pin, id FROM owners WHERE email = %s", (email.strip(),))
         else:
-            rows = self.query("SELECT name, email, pin FROM owners LIMIT 1")
+            rows = self.query("SELECT name, email, pin, id FROM owners ORDER BY id ASC LIMIT 1")
+
         if rows:
             r = rows[0]
-            return OwnerUser(r[0], r[1], str(r[2]))
+            return OwnerUser(r[0], r[1], str(r[2]), id=r[3])
         return None
 
     def update_owner_pin(self, email, new_pin):
-        self.execute("UPDATE owners SET pin = %s WHERE email = %s", (str(new_pin), email))
+        """Update owner password with secure hash."""
+        hashed = hash_pin(new_pin)
+        self.execute("UPDATE owners SET pin = %s WHERE email = %s", (hashed, email.strip()))
 
     def register_owner(self, name, email, pin):
-        self.execute("INSERT INTO owners (name, email, pin) VALUES (%s, %s, %s)", (name, email, str(pin)))
+        """Register a new owner with hashed password."""
+        hashed = hash_pin(pin)
+        self.execute("INSERT INTO owners (name, email, pin) VALUES (%s, %s, %s)", (name.strip(), email.strip(), hashed))
 
     # --- MANAGER METHODS ---
     def get_managers(self):
-        rows = self.query("SELECT name, email, pin FROM managers ORDER BY id ASC")
-        return [ManagerUser(r[0], r[1], str(r[2])) for r in rows]
+        rows = self.query("SELECT name, email, pin, id FROM managers ORDER BY id ASC")
+        return [ManagerUser(r[0], r[1], str(r[2]), id=r[3]) for r in rows]
 
     def get_manager(self, email=None, pin=None):
+        """Retrieve manager. Verifies and auto-upgrades legacy password to hash if matched."""
         if email and pin:
-            rows = self.query("SELECT name, email, pin FROM managers WHERE email = %s AND pin = %s", (email, str(pin)))
+            rows = self.query("SELECT name, email, pin, id FROM managers WHERE email = %s", (email.strip(),))
+            if rows:
+                r = rows[0]
+                stored_pin = str(r[2])
+                if verify_pin(stored_pin, pin):
+                    if not stored_pin.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+                        self.update_manager_pin(email.strip(), pin)
+                    return ManagerUser(r[0], r[1], stored_pin, id=r[3])
+            return None
         elif email:
-            rows = self.query("SELECT name, email, pin FROM managers WHERE email = %s", (email,))
+            rows = self.query("SELECT name, email, pin, id FROM managers WHERE email = %s", (email.strip(),))
         else:
-            rows = self.query("SELECT name, email, pin FROM managers LIMIT 1")
+            rows = self.query("SELECT name, email, pin, id FROM managers ORDER BY id ASC LIMIT 1")
+
         if rows:
             r = rows[0]
-            return ManagerUser(r[0], r[1], str(r[2]))
+            return ManagerUser(r[0], r[1], str(r[2]), id=r[3])
         return None
 
     def add_manager(self, name, email, pin):
-        self.execute("INSERT INTO managers (name, email, pin) VALUES (%s, %s, %s)", (name, email, str(pin)))
+        """Add a manager with hashed password. Prevents duplicates."""
+        existing = self.query("SELECT id FROM managers WHERE email = %s", (email.strip(),))
+        if existing:
+            return False, f"Manager with email {email} already exists"
+        hashed = hash_pin(pin)
+        self.execute("INSERT INTO managers (name, email, pin) VALUES (%s, %s, %s)", (name.strip(), email.strip(), hashed))
+        return True, "Manager added successfully"
 
     def update_manager_pin(self, email, new_pin):
-        self.execute("UPDATE managers SET pin = %s WHERE email = %s", (str(new_pin), email))
+        hashed = hash_pin(new_pin)
+        self.execute("UPDATE managers SET pin = %s WHERE email = %s", (hashed, email.strip()))
 
     # --- RESIDENT METHODS ---
     def get_residents(self):
-        rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures FROM residents ORDER BY id ASC")
+        rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures, id FROM residents ORDER BY id ASC")
         residents = []
         for r in rows:
-            person = Id(r[0], r[1], str(r[2]), r[3], r[4], r[5])
-            # load food orders for this resident
-            order_rows = self.query("SELECT food_name, quantity, price FROM ordered_foods WHERE resident_name = %s AND pin = %s", (r[0], str(r[2])))
+            person = Id(r[0], r[1], str(r[2]), r[3], r[4], r[5], id=r[6])
+            order_rows = self.query("SELECT food_name, quantity, price, id FROM ordered_foods WHERE resident_name = %s", (r[0],))
             for of in order_rows:
                 person.addOrderedFood(of[0], of[1], of[2])
             residents.append(person)
         return residents
 
     def get_resident(self, email, pin=None):
-        if pin:
-            rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures FROM residents WHERE email = %s AND pin = %s", (email, str(pin)))
-        else:
-            rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures FROM residents WHERE email = %s", (email,))
-        if rows:
-            r = rows[0]
-            person = Id(r[0], r[1], str(r[2]), r[3], r[4], r[5])
-            order_rows = self.query("SELECT food_name, quantity, price FROM ordered_foods WHERE resident_name = %s AND pin = %s", (r[0], str(r[2])))
-            for of in order_rows:
-                person.addOrderedFood(of[0], of[1], of[2])
-            return person
-        return None
+        """Retrieve resident. Verifies and auto-upgrades legacy password to hash if matched."""
+        if not email:
+            return None
+        clean_email = email.strip()
+        rows = self.query("SELECT name, email, pin, room_no, room_type, expenditures, id FROM residents WHERE email = %s", (clean_email,))
+        if not rows:
+            return None
+
+        r = rows[0]
+        stored_pin = str(r[2])
+
+        if pin is not None:
+            if not verify_pin(stored_pin, pin):
+                return None
+            if not stored_pin.startswith(("pbkdf2:", "scrypt:", "argon2:")):
+                self.update_resident_pin(clean_email, pin)
+
+        person = Id(r[0], r[1], stored_pin, r[3], r[4], r[5], id=r[6])
+        order_rows = self.query("SELECT food_name, quantity, price, id FROM ordered_foods WHERE resident_name = %s", (r[0],))
+        for of in order_rows:
+            person.addOrderedFood(of[0], of[1], of[2])
+        return person
 
     def add_resident(self, name, email, pin, room_no=0, room_type="None", expen=0):
-        self.execute("INSERT INTO residents (name, email, pin, room_no, room_type, expenditures) VALUES (%s, %s, %s, %s, %s, %s)",
-                     (name, email, str(pin), int(room_no), room_type, float(expen)))
+        """Register a resident. Validates inputs, prevents duplicate email, and hashes password."""
+        clean_name = name.strip()
+        clean_email = email.strip()
+        if not clean_name or not clean_email or not str(pin).strip():
+            return False, "Name, email, and password cannot be empty."
 
-    def delete_resident(self, name, pin):
-        self.execute("DELETE FROM residents WHERE name = %s AND pin = %s", (name, str(pin)))
+        existing = self.query("SELECT id FROM residents WHERE email = %s", (clean_email,))
+        if existing:
+            return False, f"A resident with email '{clean_email}' already exists."
+
+        hashed = hash_pin(pin)
+        self.execute(
+            "INSERT INTO residents (name, email, pin, room_no, room_type, expenditures) VALUES (%s, %s, %s, %s, %s, %s)",
+            (clean_name, clean_email, hashed, int(room_no), room_type, float(expen))
+        )
+        return True, "Resident registered successfully."
+
+    def delete_resident(self, name, pin=None, email=None):
+        """Delete resident record."""
+        if email:
+            self.execute("DELETE FROM residents WHERE email = %s", (email.strip(),))
+        elif name and pin:
+            self.execute("DELETE FROM residents WHERE name = %s AND pin = %s", (name.strip(), str(pin).strip()))
+        elif name:
+            self.execute("DELETE FROM residents WHERE name = %s", (name.strip(),))
 
     def update_resident_pin(self, email, new_pin):
-        self.execute("UPDATE residents SET pin = %s WHERE email = %s", (str(new_pin), email))
+        hashed = hash_pin(new_pin)
+        self.execute("UPDATE residents SET pin = %s WHERE email = %s", (hashed, email.strip()))
 
     def allot_room(self, email, pin, room_type):
-        """Allocate a room to resident, increment book_rooms and add expenditure."""
-        room_rows = self.query("SELECT type_room, price_room, total_rooms, book_rooms, starting_room FROM rooms WHERE type_room = %s", (room_type,))
-        if not room_rows:
-            return False
-        r = room_rows[0]
-        price = float(r[1])
-        book_rooms = int(r[3])
-        starting_room = int(r[4])
+        """
+        Allocate a room to resident atomically:
+        - Verifies resident credentials
+        - Checks capacity (book_rooms < total_rooms)
+        - Computes next room number
+        - Updates rooms.book_rooms and resident record atomically
+        Rolls back on any error.
+        """
+        clean_email = email.strip()
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.cursor()
+                # 1. Verify resident
+                cur.execute(self._format_query("SELECT id, name, pin, room_no, room_type, expenditures FROM residents WHERE email = %s"), (clean_email,))
+                res_row = cur.fetchone()
+                if not res_row:
+                    return False, "Resident account not found."
 
-        new_room_no = starting_room + book_rooms + 1
-        new_book_rooms = book_rooms + 1
+                stored_pin = str(res_row[2])
+                if not verify_pin(stored_pin, pin):
+                    return False, "Authentication failed. Invalid PIN."
 
-        self.execute("UPDATE rooms SET book_rooms = %s WHERE type_room = %s", (new_book_rooms, room_type))
-        self.execute("UPDATE residents SET room_no = %s, room_type = %s, expenditures = expenditures + %s WHERE email = %s AND pin = %s",
-                     (new_room_no, room_type, price, email, str(pin)))
-        return True
+                # 2. Check room capacity
+                cur.execute(self._format_query("SELECT id, type_room, price_room, total_rooms, book_rooms, starting_room FROM rooms WHERE type_room = %s"), (room_type,))
+                room_row = cur.fetchone()
+                if not room_row:
+                    return False, f"Room type '{room_type}' does not exist."
+
+                price = float(room_row[2])
+                total_rooms = int(room_row[3])
+                book_rooms = int(room_row[4])
+                starting_room = int(room_row[5])
+
+                if book_rooms >= total_rooms:
+                    return False, f"Room category '{room_type}' is fully booked ({book_rooms}/{total_rooms} rooms occupied)."
+
+                # 3. Handle previous room category if changing room
+                prev_room_type = res_row[4]
+                if prev_room_type and prev_room_type != "None" and prev_room_type != room_type:
+                    cur.execute(self._format_query(
+                        "UPDATE rooms SET book_rooms = CASE WHEN book_rooms > 0 THEN book_rooms - 1 ELSE 0 END WHERE type_room = %s"),
+                        (prev_room_type,)
+                    )
+
+                new_room_no = starting_room + book_rooms + 1
+                new_book_rooms = book_rooms + 1
+
+                # 4. Atomic updates
+                cur.execute(self._format_query("UPDATE rooms SET book_rooms = %s WHERE type_room = %s"), (new_book_rooms, room_type))
+                cur.execute(self._format_query("UPDATE residents SET room_no = %s, room_type = %s, expenditures = expenditures + %s WHERE email = %s"),
+                            (new_room_no, room_type, price, clean_email))
+                cur.close()
+
+            return True, f"Room {new_room_no} ({room_type}) successfully allocated! Fee of ₹{price:.2f} added to expenditures."
+        except Exception as e:
+            return False, f"Room allocation failed: {str(e)}"
+        finally:
+            conn.close()
 
     # --- ROOM METHODS ---
     def get_rooms(self):
-        rows = self.query("SELECT type_room, price_room, total_rooms, book_rooms, starting_room FROM rooms ORDER BY id ASC")
-        return [Rooms(r[0], r[1], r[2], r[3], r[4]) for r in rows]
+        rows = self.query("SELECT type_room, price_room, total_rooms, book_rooms, starting_room, id FROM rooms ORDER BY id ASC")
+        return [Rooms(r[0], r[1], r[2], r[3], r[4], id=r[5]) for r in rows]
 
     def add_room(self, type_r, price_r, total_r, starting_r):
+        type_clean = type_r.strip()
+        existing = self.query("SELECT id FROM rooms WHERE type_room = %s", (type_clean,))
+        if existing:
+            return False, f"Room category '{type_clean}' already exists."
         self.execute("INSERT INTO rooms (type_room, price_room, total_rooms, book_rooms, starting_room) VALUES (%s, %s, %s, 0, %s)",
-                     (type_r, float(price_r), int(total_r), int(starting_r)))
+                     (type_clean, float(price_r), int(total_r), int(starting_r)))
+        return True, "Room added successfully."
 
     def delete_room(self, type_r):
-        self.execute("DELETE FROM rooms WHERE type_room = %s", (type_r,))
+        self.execute("DELETE FROM rooms WHERE type_room = %s", (type_r.strip(),))
 
     # --- FOOD METHODS ---
     def get_foods(self):
-        rows = self.query("SELECT name, price, quantity FROM foods ORDER BY id ASC")
-        return [Foods(r[0], r[1], r[2]) for r in rows]
+        rows = self.query("SELECT name, price, quantity, id FROM foods ORDER BY id ASC")
+        return [Foods(r[0], r[1], r[2], id=r[3]) for r in rows]
 
     def add_food(self, name, price, quantity):
-        self.execute("INSERT INTO foods (name, price, quantity) VALUES (%s, %s, %s)",
-                     (name, float(price), int(quantity)))
+        name_clean = name.strip()
+        existing = self.query("SELECT id FROM foods WHERE name = %s", (name_clean,))
+        if existing:
+            # Update quantity if exists
+            self.execute("UPDATE foods SET quantity = quantity + %s, price = %s WHERE name = %s", (int(quantity), float(price), name_clean))
+            return True, "Food inventory updated."
+        self.execute("INSERT INTO foods (name, price, quantity) VALUES (%s, %s, %s)", (name_clean, float(price), int(quantity)))
+        return True, "Food added successfully."
 
     def delete_food(self, name):
-        self.execute("DELETE FROM foods WHERE name = %s", (name,))
+        self.execute("DELETE FROM foods WHERE name = %s", (name.strip(),))
 
     def order_food(self, email, pin, food_name, quantity):
-        food_rows = self.query("SELECT price, quantity FROM foods WHERE name = %s", (food_name,))
-        if not food_rows:
-            return False
-        price = float(food_rows[0][0])
-        current_qty = int(food_rows[0][1])
-        req_qty = int(quantity)
+        """
+        Atomic food order:
+        - Validates positive quantity
+        - Authenticates resident
+        - Verifies stock availability
+        - Deducts stock, writes frozen-price order item, and increments resident expenditure
+        All in a single transaction.
+        """
+        try:
+            qty = int(quantity)
+            if qty <= 0:
+                return False, "Order quantity must be at least 1."
+        except (ValueError, TypeError):
+            return False, "Invalid quantity specified."
 
-        res_rows = self.query("SELECT name FROM residents WHERE email = %s AND pin = %s", (email, str(pin)))
-        if not res_rows:
-            return False
-        res_name = res_rows[0][0]
+        clean_email = email.strip()
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.cursor()
+                # 1. Authenticate resident
+                cur.execute(self._format_query("SELECT id, name, pin, expenditures FROM residents WHERE email = %s"), (clean_email,))
+                res_row = cur.fetchone()
+                if not res_row:
+                    return False, "Resident account not found."
 
-        total_cost = price * req_qty
-        self.execute("INSERT INTO ordered_foods (food_name, quantity, price, resident_name, pin) VALUES (%s, %s, %s, %s, %s)",
-                     (food_name, req_qty, price, res_name, str(pin)))
-        self.execute("UPDATE residents SET expenditures = expenditures + %s WHERE email = %s AND pin = %s",
-                     (total_cost, email, str(pin)))
-        new_qty = max(0, current_qty - req_qty)
-        self.execute("UPDATE foods SET quantity = %s WHERE name = %s", (new_qty, food_name))
-        return True
+                stored_pin = str(res_row[2])
+                if not verify_pin(stored_pin, pin):
+                    return False, "Authentication failed. Invalid PIN."
 
-    def get_ordered_foods_for_resident(self, resident_name, pin):
-        rows = self.query("SELECT food_name, quantity, price FROM ordered_foods WHERE resident_name = %s AND pin = %s ORDER BY id DESC",
-                          (resident_name, str(pin)))
-        return [OrderedFoods(r[0], r[1], r[2]) for r in rows]
+                res_name = res_row[1]
+
+                # 2. Check food stock
+                cur.execute(self._format_query("SELECT id, price, quantity FROM foods WHERE name = %s"), (food_name.strip(),))
+                food_row = cur.fetchone()
+                if not food_row:
+                    return False, f"Item '{food_name}' not available on the canteen menu."
+
+                price = float(food_row[1])
+                current_stock = int(food_row[2])
+
+                if current_stock < qty:
+                    return False, f"Insufficient stock for '{food_name}'. Available: {current_stock}, Requested: {qty}."
+
+                total_cost = price * qty
+                new_stock = current_stock - qty
+
+                # 3. Atomic deductions and order logging
+                cur.execute(self._format_query("UPDATE foods SET quantity = %s WHERE name = %s"), (new_stock, food_name.strip()))
+                cur.execute(self._format_query("INSERT INTO ordered_foods (food_name, quantity, price, resident_name, pin) VALUES (%s, %s, %s, %s, %s)"),
+                            (food_name.strip(), qty, price, res_name, stored_pin))
+                cur.execute(self._format_query("UPDATE residents SET expenditures = expenditures + %s WHERE email = %s"), (total_cost, clean_email))
+                cur.close()
+
+            return True, f"Order placed for {qty}x {food_name}! Total ₹{total_cost:.2f} billed to expenditures."
+        except Exception as e:
+            return False, f"Food ordering failed: {str(e)}"
+        finally:
+            conn.close()
+
+    def get_ordered_foods_for_resident(self, resident_name, pin=None):
+        rows = self.query("SELECT food_name, quantity, price, id FROM ordered_foods WHERE resident_name = %s ORDER BY id DESC", (resident_name.strip(),))
+        return [OrderedFoods(r[0], r[1], r[2], id=r[3]) for r in rows]
 
     # --- WORKER METHODS ---
     def get_workers(self):
-        rows = self.query("SELECT name, job, salary FROM workers ORDER BY id ASC")
-        return [workers(r[0], r[1], r[2]) for r in rows]
+        rows = self.query("SELECT name, job, salary, id FROM workers ORDER BY id ASC")
+        return [workers(r[0], r[1], r[2], id=r[3]) for r in rows]
 
     def add_worker(self, name, job, salary):
         self.execute("INSERT INTO workers (name, job, salary) VALUES (%s, %s, %s)",
-                     (name, job, float(salary)))
+                     (name.strip(), job.strip(), float(salary)))
 
     def delete_worker(self, name, job):
-        self.execute("DELETE FROM workers WHERE name = %s AND job = %s", (name, job))
+        self.execute("DELETE FROM workers WHERE name = %s AND job = %s", (name.strip(), job.strip()))
 
     # --- MESSAGING METHODS ---
     def get_messages(self):
-        rows = self.query("SELECT message, sender FROM messages ORDER BY id ASC")
+        rows = self.query("SELECT message, sender, id FROM messages ORDER BY id ASC")
         return [f"{r[0]},{r[1]}" for r in rows]
 
     def add_message(self, message, sender):
-        self.execute("INSERT INTO messages (message, sender) VALUES (%s, %s)", (message, sender))
+        if message and message.strip():
+            self.execute("INSERT INTO messages (message, sender) VALUES (%s, %s)", (message.strip(), sender.strip()))
 
     # --- COMPLAINTS METHODS ---
     def get_complaints(self):
-        rows = self.query("SELECT complain, resident_name FROM complaints ORDER BY id DESC")
+        rows = self.query("SELECT complain, resident_name, id FROM complaints ORDER BY id DESC")
         return [f"{r[0]},{r[1]}" for r in rows]
 
     def add_complaint(self, complain, resident_name):
-        self.execute("INSERT INTO complaints (complain, resident_name) VALUES (%s, %s)", (complain, resident_name))
+        if complain and complain.strip():
+            self.execute("INSERT INTO complaints (complain, resident_name) VALUES (%s, %s)", (complain.strip(), resident_name.strip()))
 
     def get_complaints_count_for_resident(self, resident_name):
-        rows = self.query("SELECT COUNT(*) FROM complaints WHERE resident_name = %s", (resident_name,))
+        rows = self.query("SELECT COUNT(*) FROM complaints WHERE resident_name = %s", (resident_name.strip(),))
         return rows[0][0] if rows else 0
 
-    # --- RESIDENCE & JOB REQUESTS ---
-    def get_residence_requests(self):
-        rows = self.query("SELECT name, email, pin FROM residence_requests ORDER BY id DESC")
-        return [RequestResidence(r[0], r[1], str(r[2])) for r in rows]
+    # --- RESIDENCE APPLICATIONS LIFECYCLE ---
+    def get_residence_requests(self, status=None):
+        """Get residence applications, optionally filtered by status ('pending', 'approved', 'rejected')."""
+        if status:
+            rows = self.query("SELECT name, email, pin, status, created_at, id FROM residence_requests WHERE status = %s ORDER BY id DESC", (status,))
+        else:
+            rows = self.query("SELECT name, email, pin, status, created_at, id FROM residence_requests ORDER BY id DESC")
+        return [RequestResidence(r[0], r[1], str(r[2]), status=r[3], created_at=r[4], id=r[5]) for r in rows]
 
     def add_residence_request(self, name, email, pin):
-        self.execute("INSERT INTO residence_requests (name, email, pin) VALUES (%s, %s, %s)", (name, email, str(pin)))
+        """Submit a public application for hostel residence with status 'pending'."""
+        clean_name = name.strip()
+        clean_email = email.strip()
+        if not clean_name or not clean_email or not str(pin).strip():
+            return False, "All fields are required."
+
+        # Check if already a resident
+        existing_res = self.query("SELECT id FROM residents WHERE email = %s", (clean_email,))
+        if existing_res:
+            return False, f"An active resident account already exists for {clean_email}. Please log in directly."
+
+        # Check if already has a pending application
+        pending_req = self.query("SELECT id FROM residence_requests WHERE email = %s AND status = 'pending'", (clean_email,))
+        if pending_req:
+            return True, "Your application is already pending review by the hostel manager."
+
+        hashed = hash_pin(pin)
+        self.execute(
+            "INSERT INTO residence_requests (name, email, pin, status) VALUES (%s, %s, %s, 'pending')",
+            (clean_name, clean_email, hashed)
+        )
+        return True, "Application submitted successfully! It is now pending manager approval."
+
+    def approve_residence_request(self, email):
+        """
+        Manager approval lifecycle:
+        - Atomically verifies request exists and is in 'pending' status
+        - Verifies resident does not already exist
+        - Transactionally creates single resident account in 'residents' table
+        - Updates request status to 'approved'
+        - Prevents duplicate account creation on re-approval
+        """
+        clean_email = email.strip()
+        conn = self.get_connection()
+        try:
+            with conn:
+                cur = conn.cursor()
+                cur.execute(self._format_query("SELECT id, name, email, pin, status FROM residence_requests WHERE email = %s ORDER BY id DESC"), (clean_email,))
+                req_row = cur.fetchone()
+                if not req_row:
+                    return False, f"Application for '{clean_email}' not found."
+
+                req_id = req_row[0]
+                name = req_row[1]
+                stored_pin = str(req_row[3])
+                status = req_row[4]
+
+                if status == "approved":
+                    return False, f"Application for '{clean_email}' has already been approved."
+
+                # Verify resident account does not already exist
+                cur.execute(self._format_query("SELECT id FROM residents WHERE email = %s"), (clean_email,))
+                if cur.fetchone():
+                    # Mark request as approved to reconcile state
+                    cur.execute(self._format_query("UPDATE residence_requests SET status = 'approved' WHERE id = %s"), (req_id,))
+                    return False, f"Resident account already exists for '{clean_email}'."
+
+                # Insert resident with hashed PIN
+                cur.execute(
+                    self._format_query("INSERT INTO residents (name, email, pin, room_no, room_type, expenditures) VALUES (%s, %s, %s, 0, 'None', 0.0)"),
+                    (name, clean_email, stored_pin)
+                )
+
+                # Update request status to approved
+                cur.execute(self._format_query("UPDATE residence_requests SET status = 'approved' WHERE id = %s"), (req_id,))
+                cur.close()
+
+            return True, f"Application approved! Resident account created for {name} ({clean_email}). They can now log in at /login."
+        except Exception as e:
+            return False, f"Approval failed: {str(e)}"
+        finally:
+            conn.close()
+
+    def reject_residence_request(self, email):
+        """Mark residence application as rejected."""
+        clean_email = email.strip()
+        self.execute("UPDATE residence_requests SET status = 'rejected' WHERE email = %s", (clean_email,))
+        return True, "Application rejected."
 
     def delete_residence_request(self, email):
-        self.execute("DELETE FROM residence_requests WHERE email = %s", (email,))
+        self.execute("DELETE FROM residence_requests WHERE email = %s", (email.strip(),))
+        return True, "Application removed."
 
+    # --- JOB REQUESTS ---
     def get_job_requests(self):
-        rows = self.query("SELECT name, email, job FROM job_requests ORDER BY id DESC")
-        return [RequestJobs(r[0], r[1], r[2]) for r in rows]
+        rows = self.query("SELECT name, email, job, id FROM job_requests ORDER BY id DESC")
+        return [RequestJobs(r[0], r[1], r[2], id=r[3]) for r in rows]
 
     def add_job_request(self, name, email, job):
-        self.execute("INSERT INTO job_requests (name, email, job) VALUES (%s, %s, %s)", (name, email, job))
+        clean_name = name.strip()
+        clean_email = email.strip()
+        clean_job = job.strip()
+        if not clean_name or not clean_email or not clean_job:
+            return False, "All fields are required."
+        self.execute("INSERT INTO job_requests (name, email, job) VALUES (%s, %s, %s)", (clean_name, clean_email, clean_job))
+        return True, "Job application submitted successfully."
 
     def delete_job_request(self, email):
-        self.execute("DELETE FROM job_requests WHERE email = %s", (email,))
+        self.execute("DELETE FROM job_requests WHERE email = %s", (email.strip(),))
 
-# Singleton database instance
+
+# Authoritative singleton database instance
 db = Database()

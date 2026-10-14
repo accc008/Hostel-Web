@@ -144,22 +144,27 @@
                 <table class="table table-bordered" id="dataTable" width="100%" cellspacing="0">
                     <thead>
                         <tr>
+                            <th>#</th>
                             <th>Name of Resident</th>
                             <th>Email of Resident</th>
                             <th>Password</th>
+                            <th>Room No</th>
+                            <th>Room Type</th>
+                            <th>Expenditures</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for id in My_List %}
-
+                        {% for id in MyList %}
                         <tr>
+                            <td>{{ loop.index }}</td>
                             <td>{{ id.name }}</td>
-                            <td>{{ id.email}}</td>
-                            <td>{{ id.pin }}
-                            </td>
+                            <td>{{ id.email }}</td>
+                            <td><code>{{ id.pin }}</code></td>
+                            <td><span class="badge badge-primary">{{ id.roomNo }}</span></td>
+                            <td>{{ id.roomType }}</td>
+                            <td><strong>₹{{ id.expenditures }}</strong></td>
                         </tr>
                         {% endfor %}
-
                     </tbody>
                 </table>
             </div>

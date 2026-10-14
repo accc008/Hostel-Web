@@ -37,6 +37,16 @@
                                 <h1 class="h4 text-gray-900 mb-4">Manager!</h1>
                                 <h1 class="h4 text-gray-900 mb-4">Create an Account of Resident!</h1>
                             </div>
+                            {% if error %}
+                            <div class="alert alert-danger" role="alert">
+                                <i class="fas fa-exclamation-triangle"></i> {{ error }}
+                            </div>
+                            {% endif %}
+                            {% if success %}
+                            <div class="alert alert-success" role="alert">
+                                <i class="fas fa-check-circle"></i> {{ success }}
+                            </div>
+                            {% endif %}
                             <form class="user" action="/registerResident" method="POST">
                                 <div class="form-group row">
                                     <div class="col-sm-6 mb-3 mb-sm-0">

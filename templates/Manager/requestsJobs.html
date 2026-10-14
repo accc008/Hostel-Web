@@ -196,13 +196,14 @@
                         {% for id in MyList %}
                         <tr>
                             <form action="/deleteJob" method="POST">
+                                <input type="hidden" name="email" value="{{id.email}}">
                                 <td><input style="display: none;" name="myindex" value="{{loop.index}}"></input>{{loop.index}}</td>
                                <td>{{id.name}}</td>
                                <td>{{id.email}}</td>
                                <td>{{id.job}}</td>
-                               <td><button type="submit" style="box-shadow: none;" class="btn btn-block">
+                               <td><button type="submit" style="box-shadow: none;" class="btn btn-block btn-outline-danger btn-sm">
                                 <span>
-                                    <i class="fas fa-trash"></i>
+                                    <i class="fas fa-trash"></i> Delete
                                 </span>
                             </button></td>
                             </form>

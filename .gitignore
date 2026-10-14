@@ -11,3 +11,4 @@ ENV/
 .vercel
 *.db
 .playwright-mcp/
+.pytest_cache/

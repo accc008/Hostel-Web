@@ -45,6 +45,11 @@
                                         <h1 class="h4 text-gray-900 mb-4">Welcome!</h1>
                                         <h1 class="h4 text-gray-900 mb-4">Manager of Hostel!</h1>
                                     </div>
+                                    {% if error %}
+                                    <div class="alert alert-danger" role="alert">
+                                        <i class="fas fa-exclamation-triangle"></i> {{ error }}
+                                    </div>
+                                    {% endif %}
                                     <form class="user" action="/manager" method="POST">
                                         <div class="form-group">
                                             <input type="email" name="myemail" class="form-control form-control-user" id="exampleInputEmail" aria-describedby="emailHelp" placeholder="Enter Email Address..." required="required">
@@ -66,7 +71,7 @@
                                             <label class="custom-control-label" for="magicBtn5">Remember me</label>
                                         </div>
                                           <br>
-                                        <button onclick="checkid()" class="btn btn-success btn-user btn-block">
+                                        <button type="submit" onclick="checkid()" class="btn btn-success btn-user btn-block">
                                             Login
                                         </button>
                                         <hr>

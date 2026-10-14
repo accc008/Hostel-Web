@@ -99,8 +99,8 @@ git push origin main
 3. Vercel will automatically detect `vercel.json` and `@vercel/python`.
 4. Click **Deploy**.
 
-### Step 3: Connect Supabase Database (Optional for Permanent Cloud Persistence)
-By default, the deployed Vercel site runs in auto-seeded serverless mode (`/tmp/hostel.db`). To enable permanent, multi-user PostgreSQL cloud persistence:
+### Step 3: Configure Supabase PostgreSQL (Mandatory for Vercel Production)
+Production deployment on Vercel requires authoritative persistent cloud PostgreSQL to ensure data is permanently preserved across serverless cold starts. Silent fallback to ephemeral `/tmp/hostel.db` is strictly disabled.
 1. Create a free project at [supabase.com](https://supabase.com).
 2. Go to **Project Settings** -> **Database** and copy your **Connection String (URI)**:
    ```
@@ -110,8 +110,29 @@ By default, the deployed Vercel site runs in auto-seeded serverless mode (`/tmp/
    - Navigate to **Settings** -> **Environment Variables**.
    - Add Key: `DATABASE_URL`
    - Add Value: `postgresql://postgres:[YOUR-PASSWORD]@db.[YOUR-PROJECT-REF].supabase.co:5432/postgres`
-4. Trigger a Redeploy in Vercel.
-5. The application will automatically connect to Supabase, create all relational tables, and seed the entire Indian dataset on first load!
+4. Deploy or Redeploy in Vercel.
+5. The application will connect to Supabase, create all relational tables, and idempotently seed the Indian dataset with hashed credentials on first startup!
+
+---
+
+## 🧪 Automated Testing Suite
+
+The repository includes a comprehensive `pytest` test suite covering registration, public applications, atomic room allocations, food ordering, and auth security guards:
+
+```bash
+# Run the complete automated test suite
+python -m pytest tests/test_hostel.py -v
+```
+
+All 8 tests execute against isolated temporary test fixtures:
+- **Test A**: Manager resident registration and immediate resident login.
+- **Test B**: Public residence application, manager review, and transactional account creation.
+- **Test C**: Atomic room allocation with capacity limits and rollback protection.
+- **Test D**: Atomic food ordering with inventory stock validation and rollback protection.
+- **Test E**: Role-based authentication guards and session isolation.
+- **Test F**: Werkzeug password hashing and automatic legacy plain-text password upgrade.
+- **Test G**: Idempotent seeding preserving user modifications.
+- **Test H**: Production database failure mode (Vercel without DATABASE_URL raises RuntimeError).
 
 ---
 

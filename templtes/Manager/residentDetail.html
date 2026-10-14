@@ -191,27 +191,31 @@
                             <th>Name of Resident</th>
                             <th>Email of Resident</th>
                             <th>Password</th>
-                            <td>Action</td>
+                            <th>Room No</th>
+                            <th>Room Type</th>
+                            <th>Expenditures</th>
+                            <th>Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        {% for id in My_List %}
-
+                        {% for id in MyList %}
                         <tr>
                            <form action="/deleteResident" method="POST">
-                            <td><input style="display: none;" name="myindex" value="{{loop.index}}"></input>{{loop.index}}</td>
-                            <td>{{ id.name }}</td>
-                            <td>{{ id.email}}</td>
-                            <td>{{ id.pin }}</td>
-                            <td><button type="submit" style="box-shadow: none;" class="btn btn-block">
-                                <span>
-                                    <i class="fas fa-trash"></i>
-                                </span>
+                            <input type="hidden" name="name" value="{{ id.name }}">
+                            <input type="hidden" name="pin" value="{{ id.pin }}">
+                            <td>{{ loop.index }}</td>
+                            <td><strong>{{ id.name }}</strong></td>
+                            <td>{{ id.email }}</td>
+                            <td><code>{{ id.pin }}</code></td>
+                            <td><span class="badge badge-success">{{ id.roomNo }}</span></td>
+                            <td>{{ id.roomType }}</td>
+                            <td>₹{{ id.expenditures }}</td>
+                            <td><button type="submit" style="box-shadow: none;" class="btn btn-danger btn-sm" onclick="return confirm('Delete resident {{ id.name }}?');">
+                                <i class="fas fa-trash"></i>
                             </button></td>
                             </form>
                         </tr>
                         {% endfor %}
-
                     </tbody>
                 </table>
             </div>

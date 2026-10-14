@@ -1,6 +1,6 @@
-# 🏛️ System Architecture & OOP Design Documentation
+# 🏛️ System Architecture & Production Engineering Documentation
 
-This document provides a comprehensive technical overview of the **Hostel Management System (HMS)** architecture, detailing its software design patterns, Object-Oriented Programming (OOP) principles, data flow pipelines, and serverless hosting adaptations.
+This document provides a comprehensive technical overview of the **Hostel Management System (HMS)** architecture, detailing its software design patterns, Object-Oriented Programming (OOP) principles, data flow pipelines, role-based security boundaries, and authoritative persistence layers.
 
 ---
 
@@ -11,7 +11,7 @@ This document provides a comprehensive technical overview of the **Hostel Manage
 |                                 CLIENT BROWSERS                                   |
 |   (Desktop, Tablet, Mobile - Owner / Manager / Resident / Public Guest Portals)   |
 +-----------------------------------------------------------------------------------+
-                                         │  HTTPS / HTTP Requests
+                                         │  HTTPS Requests
                                          ▼
 +-----------------------------------------------------------------------------------+
 |                       EDGE ROUTING & SERVERLESS RUNTIME                           |
@@ -21,27 +21,31 @@ This document provides a comprehensive technical overview of the **Hostel Manage
                                          ▼
 +-----------------------------------------------------------------------------------+
 |                          CORE APPLICATION (app.py)                                |
-|  - Flask Routing Controllers & Request Validation                                 |
-|  - Encrypted Client-Side Cookie Session Management (Flask session)                |
-|  - Server-Side Jinja2 Template Rendering Engine (templates/)                      |
-|  - Static Asset Delivery (static/css, static/js, static/vendor)                   |
+|  - Role-Based Authentication Guards (@login_required(role=...))                    |
+|  - Cryptographically Signed Session Cookies (HttpOnly, SameSite=Lax)              |
+|  - Post-Redirect-Get (PRG) Pattern to Prevent Form Resubmissions                  |
+|  - Dynamic Jinja2 Server-Side Template Rendering Engine                           |
+|  - Static Asset Delivery (CDN Fallbacks for FontAwesome, Bootstrap, Datatables)   |
 +-----------------------------------------------------------------------------------+
                                          │
                                          ▼
 +-----------------------------------------------------------------------------------+
-|                    DUAL-MODE DATABASE ENGINE (db.py)                              |
-|  - Abstract Database Layer with Polymorphic Query Execution                       |
-|  - Auto-Migration & Schema Bootstrap (schema.sql)                                 |
-|  - Auto-Seeding Engine (users_credentials.json)                                   |
+|                    AUTHORITATIVE DATABASE ENGINE (db.py)                          |
+|  - Unified Adapter with Dynamic SQL Parameter Translation (%s vs ?)               |
+|  - Single-Transaction Atomic Operations (Room Allotment, Food Ordering)           |
+|  - Password Hashing & Seamless Legacy Plain-Text Upgrade Engine                   |
+|  - Public Application Review & Account Provisioning Lifecycle                     |
+|  - Idempotent Seeding Engine (users_credentials.json)                             |
 +-----------------------------------------------------------------------------------+
                      │                                         │
-     (DATABASE_URL set)                               (Fallback / Local)
+     (VERCEL=1: DATABASE_URL Required)                 (Local Development / Testing)
                      ▼                                         ▼
 +---------------------------------------+   +---------------------------------------+
 |        SUPABASE POSTGRESQL            |   |           LOCAL SQLITE                |
-|  - Cloud PostgreSQL Relational DB     |   |  - Embedded serverless DB (/tmp)      |
-|  - Permanent multi-tenant persistence |   |  - Zero-config local dev (hostel.db)  |
-|  - Connection pooling (pg8000/psycopg)|   |  - Synchronized flat files (data/*.txt|
+|  - Authoritative Cloud PostgreSQL DB  |   |  - Persistent dev database            |
+|  - Zero cold-start data loss          |   |    (data/hostel.db)                   |
+|  - Connection pooling (pg8000/psycopg)|   |  - Isolated test fixtures for pytest  |
+|  - Strict Vercel production check     |   |  - Zero configuration setup           |
 +---------------------------------------+   +---------------------------------------+
 ```
 
@@ -49,58 +53,93 @@ This document provides a comprehensive technical overview of the **Hostel Manage
 
 ## 2. Object-Oriented Programming (OOP) Principles Applied
 
-The application is structured to demonstrate the core tenets of Object-Oriented Programming:
-
 ### A. Encapsulation
 Every business entity is modeled as an independent class that encapsulates its internal state, attributes, and mutation behaviors:
 - **`Id` (Resident Entity)**: Encapsulates personal identity (`name`, `email`, `pin`), allocated room details (`roomNo`, `roomType`), accumulated financial liabilities (`expenditures`), and associated food orders (`myOrderedFoods`).
-  ```python
-  class Id:
-      def __init__(self, nameR, emailR, pinR, no=0, typeRoom="None", expen=0):
-          self.name = nameR
-          self.email = emailR
-          self.pin = str(pinR)
-          self.roomNo = int(no)
-          self.roomType = typeRoom
-          self.expenditures = float(expen)
-          self.myOrderedFoods = []
-
-      def addOrderedFood(self, name, quantity, price):
-          orderfood = OrderedFoods(name, int(quantity), float(price))
-          self.myOrderedFoods.append(orderfood)
-  ```
 - **`Rooms`**: Encapsulates room category names, monthly pricing, total room capacity, currently booked inventory, and starting numbering offsets.
-- **`Foods`**: Encapsulates canteen menu pricing and stock quantity.
+- **`Foods`**: Encapsulates canteen menu pricing, unit economics, and stock quantity.
 - **`workers`**: Encapsulates staff job title, compensation, and personnel identification.
+- **`RequestResidence`**: Encapsulates prospective student applications, tracking name, email, credentials, and lifecycle status (`pending`, `approved`, `rejected`).
 
 ### B. Abstraction
 The data layer (`Database` class in `db.py`) abstracts away the underlying database engine:
-- Calling code in `app.py` invokes high-level domain operations like `db.get_residents()`, `db.allot_room()`, or `db.order_food()` without needing to know whether the target database is SQLite or PostgreSQL.
-- SQL parameter binding differences (`%s` for PostgreSQL vs `?` for SQLite) are abstracted inside the `Database.execute_insert()` and `Database.query()` methods.
+- Calling code in `app.py` invokes high-level domain operations like `db.get_residents()`, `db.allot_room()`, `db.order_food()`, or `db.approve_residence_request()` without coupling to SQLite or PostgreSQL drivers.
+- Differences in parameter binding syntax (`%s` in PostgreSQL vs `?` in SQLite) and auto-increment keywords (`SERIAL` vs `INTEGER PRIMARY KEY AUTOINCREMENT`) are abstracted internally.
 
 ### C. Polymorphism
 The database query execution adapts dynamically:
 - If `DATABASE_URL` is configured, connection objects adapt to PostgreSQL drivers (`psycopg2` or `pg8000`).
-- If no cloud database is specified, connection objects adapt seamlessly to SQLite (`sqlite3`).
-- Return objects from both database engines instantiate identical domain models (`Id`, `Rooms`, `Foods`), providing uniform interfaces to Flask route controllers.
+- If in local development or test mode, connection objects adapt to `sqlite3`.
+- Return rows from both engines map into identical domain models (`Id`, `Rooms`, `Foods`), providing uniform interfaces to Flask route controllers.
 
 ---
 
-## 3. Serverless vs Traditional Monolith Adaptation
+## 3. Production Architecture vs Previous Vulnerabilities
 
-| Architectural Dimension | Traditional Flask Monolith | Modernized Serverless Adaptation (This Project) |
+| Architectural Dimension | Previous Vulnerable Implementation | Production-Hardened Architecture |
 | :--- | :--- | :--- |
-| **Process Model** | Long-running daemon process | Ephemeral, stateless execution per HTTP request |
-| **Session Storage** | In-memory global variables (`MyEmail`, `MyPin`) | Cryptographically signed client-side session cookies (`Flask session`) |
-| **Filesystem Write** | Persistent local disk writes | Dual-mode: writes to `/tmp/hostel.db` on serverless, or cloud PostgreSQL via Supabase |
-| **Concurrency** | Single-user race condition on global variables | Isolated request contexts with zero state leakage across concurrent users |
-| **Scalability** | Vertical server scaling | Auto-scaling horizontal execution on Vercel Edge nodes |
+| **Vercel Data Persistence** | Silent fallback to `/tmp/hostel.db`, wiped on serverless cold starts | **Authoritative Supabase PostgreSQL**. Raises explicit `RuntimeError` if `DATABASE_URL` is missing on Vercel. |
+| **Public Applications** | Submissions stuck in `residence_requests` with no approval workflow | **Full Approval Lifecycle**: Manager reviews applications, clicks "Approve", creating a resident account transactionally with hashed password. |
+| **Password Storage** | Plain-text strings stored in database | **Werkzeug Password Hashing** (`pbkdf2:sha256`) with automatic seamless upgrade of legacy plain-text upon login. |
+| **Authorization Guards** | No decorators; routes fell back to hardcoded demo strings (`vikram.patel@hostel.in`) | **Strict `@login_required(role=...)`** decorator. Zero hardcoded fallback identities. Unauthenticated users are redirected. |
+| **Transaction Integrity** | Multi-statement room allotment and food ordering without atomicity | **Single-Transaction Atomic Operations** with concurrency checks, capacity guards, stock checks, and automatic rollback. |
+| **Seeding Idempotency** | Seeding dependent only on owner count; risk of duplicate or wiped data | **Idempotent Independent Seeding**: Each table checked separately; never overwrites user data upon restart. |
 
 ---
 
-## 4. Security & Defensive Design
+## 4. End-to-End Data Lifecycles
 
-1. **Cookie-Based Cryptographic Signing**: Sessions use `app.secret_key` with HMAC signing, preventing client-side session tampering.
-2. **Parameterized SQL Queries**: All queries execute with parameterized arguments, preventing SQL injection vulnerabilities.
-3. **Graceful Fallbacks**: If the cloud database connection temporarily drops or is unconfigured, the application falls back to local storage without throwing unhandled 500 exceptions.
-4. **Environment Isolation**: Production credentials, secrets, and database strings are managed through `os.environ` rather than hardcoded in source control.
+### 1. Resident Admission Lifecycle
+```text
+Public Applicant visits /applyresidence
+     │
+     ▼ Submits Name, Email, Password
+Record created in residence_requests (status = 'pending')
+     │
+     ▼ Manager navigates to /requestsResidents
+Manager reviews application and clicks "Approve"
+     │
+     ▼ Single Atomic Transaction (approve_residence_request)
+1. Checks applicant not already approved.
+2. Checks email uniqueness in residents table.
+3. Hashes password and inserts into residents table.
+4. Updates residence_requests status to 'approved'.
+     │
+     ▼ Success Notification
+Applicant can now immediately log in at /login with their email and password!
+```
+
+### 2. Room Allocation Lifecycle
+```text
+Authenticated Resident visits /getRoom
+     │
+     ▼ Selects Room Tier (Single Deluxe, Double Sharing, etc.)
+POST to /getnewRoom -> db.allot_room(email, pin, room_type)
+     │
+     ▼ Single Atomic Transaction
+1. Authenticates resident credentials.
+2. Checks room capacity (book_rooms < total_rooms).
+3. If full: rolls back and returns "fully booked" error.
+4. Increments book_rooms, assigns new room_no.
+5. Updates resident record and adds room price to expenditures.
+     │
+     ▼ Redirect to /resident dashboard displaying new room & updated dues.
+```
+
+### 3. Canteen Order Lifecycle
+```text
+Authenticated Resident visits /orderfood
+     │
+     ▼ Selects Food Item & Quantity
+POST to /orderfoodnow -> db.order_food(email, pin, food_name, quantity)
+     │
+     ▼ Single Atomic Transaction
+1. Validates quantity >= 1.
+2. Checks canteen inventory (food.quantity >= requested_quantity).
+3. If insufficient: rolls back and returns stock error.
+4. Deducts stock from foods table.
+5. Records order in ordered_foods with price frozen at order time.
+6. Adds total cost to resident expenditures.
+     │
+     ▼ Redirect to /orderfooddetail showing order history.
+```

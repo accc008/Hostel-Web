@@ -126,9 +126,14 @@
             </div>
             <br>
             <div class="p-5">
+                {% if error %}
+                <div class="alert alert-danger" role="alert">
+                    <i class="fas fa-exclamation-triangle"></i> {{ error }}
+                </div>
+                {% endif %}
                 <form class="user" action="/orderfoodnow" method="POST">
                     <div class="form-group">
-                        <input type="email" name="email" class="form-control form-control-user" id="exampleInputEmail"
+                        <input type="email" name="email" value="{{ variable }}" class="form-control form-control-user" id="exampleInputEmail"
                             aria-describedby="emailHelp" placeholder="Enter Email Address..." required="required">
                     </div>
                     <div class="form-group">
