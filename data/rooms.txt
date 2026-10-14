@@ -1,0 +1,4 @@
+Single Deluxe,12000,10,4,101
+Double Sharing,8000,15,4,201
+Triple Sharing,5500,12,4,301
+Four Sharing,4000,10,4,401

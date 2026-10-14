@@ -1,0 +1,6 @@
+Masala Dosa,1,60,Aarav Mehta,1001
+Paneer Butter Masala,1,150,Ananya Gupta,1002
+Butter Naan (2 pcs),1,40,Ananya Gupta,1002
+Special Veg Thali,1,120,Rohan Verma,1003
+Chicken Biryani,1,180,Siddharth Malhotra,1011
+Gulab Jamun (2 pcs),1,40,Aarav Mehta,1001

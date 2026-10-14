@@ -1,0 +1,5 @@
+Ramesh Kumar,Security Guard,15000
+Sunita Devi,Head Cook,18000
+Mohan Lal,Cleaner,12000
+Suresh Yadav,Electrician & Maintenance,16000
+Ganesh Shinde,Mess Helper,11000

@@ -1,0 +1,10 @@
+Masala Dosa,60,40
+Paneer Butter Masala,150,30
+Special Veg Thali,120,50
+Butter Naan (2 pcs),40,60
+Samosa with Chutney (2 pcs),30,80
+Masala Chai,15,100
+Chicken Biryani,180,25
+Gulab Jamun (2 pcs),40,50
+Pav Bhaji,80,35
+Aloo Paratha with Curd,50,45

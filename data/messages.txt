@@ -1,14 +1,6 @@
-Hello,owner
-How are You?,owner
-mn owner hoo,owner
-Yes,admin
-Yes Mn Manager hoo,admin
-Hello ,owner
-Hello I am  Manager,admin
-ok I am Owner,owner
-How are U?,admin
-Hello,owner
-Hello,owner
-I am login from mobile?,owner
-How are you?,owner
-hello I am Fine,admin
+Namaste Vikram, please ensure the room inspection for block 2 is completed today.,owner
+Namaste Sir, room inspection for 2nd and 3rd floor is done. Everything is in order.,admin
+Good. Also verify all new admissions before allocating room keys.,owner
+Yes Sir, all documents and fee receipts are being verified at reception.,admin
+Priya is managing the warden desk for student welfare and medical kits.,admin
+Excellent, keep me updated on the monthly mess expenditure report.,owner

@@ -1,0 +1,16 @@
+Aarav Mehta,aarav.mehta@student.in,1001,101,Single Deluxe,12000
+Ananya Gupta,ananya.gupta@student.in,1002,102,Single Deluxe,12450
+Rohan Verma,rohan.verma@student.in,1003,201,Double Sharing,8200
+Sneha Iyer,sneha.iyer@student.in,1004,201,Double Sharing,8150
+Aditya Sharma,aditya.sharma@student.in,1005,202,Double Sharing,8350
+Pooja Nair,pooja.nair@student.in,1006,202,Double Sharing,8000
+Ishaan Joshi,ishaan.joshi@student.in,1007,301,Triple Sharing,5850
+Diya Patel,diya.patel@student.in,1008,301,Triple Sharing,5620
+Kabir Sen,kabir.sen@student.in,1009,301,Triple Sharing,5500
+Neha Reddy,neha.reddy@student.in,1010,302,Triple Sharing,5900
+Siddharth Malhotra,siddharth.m@student.in,1011,401,Four Sharing,4250
+Tanvi Deshmukh,tanvi.deshmukh@student.in,1012,401,Four Sharing,4180
+Rahul Kulkarni,rahul.kulkarni@student.in,1013,401,Four Sharing,4400
+Riya Banerjee,riya.banerjee@student.in,1014,401,Four Sharing,4050
+Kunal Bhatia,kunal.bhatia@student.in,1015,103,Single Deluxe,12600
+Meera Nambiar,meera.nambiar@student.in,1016,104,Single Deluxe,12000

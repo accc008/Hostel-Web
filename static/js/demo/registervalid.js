@@ -4,7 +4,8 @@ function create(){
     var email=document.getElementById("exampleInputEmail").value;
     var password=document.getElementById("exampleInputPassword").value;
     if(fname!="" && lname!="" && email!="" && password!=""){
-        document.getElementById("createaccount").href="/createAccount"
+        var elem = document.getElementById("createaccount");
+        if (elem) { elem.href="/createAccount"; }
     }else{
         if(fname==""){
             document.getElementById("exampleFirstName").style.borderColor="red";
