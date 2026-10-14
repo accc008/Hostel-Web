@@ -1,18 +1,29 @@
 import os
-from flask import Flask, render_template, request, redirect, session, url_for
+from flask import Flask, render_template, request, redirect, session, url_for, send_from_directory
 from db import (
     db, Id, workers, Foods, Rooms,
     RequestResidence, RequestJobs, OrderedFoods,
     ManagerUser, OwnerUser
 )
 
-# Set templates directory
-template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templates")
+# Set directories
+root_dir = os.path.dirname(os.path.abspath(__file__))
+template_dir = os.path.join(root_dir, "templates")
 if not os.path.exists(template_dir):
-    template_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "templtes")
+    template_dir = os.path.join(root_dir, "templtes")
+static_dir = os.path.join(root_dir, "static")
 
-app = Flask(__name__, template_folder=template_dir)
+app = Flask(
+    __name__,
+    template_folder=template_dir,
+    static_folder=static_dir,
+    static_url_path="/static"
+)
 app.secret_key = os.environ.get("SECRET_KEY", "hostel-management-secret-key-2026-secure")
+
+@app.route('/static/<path:filename>')
+def serve_static(filename):
+    return send_from_directory(static_dir, filename)
 
 # Helper financial calculations
 def totalexpenditures():

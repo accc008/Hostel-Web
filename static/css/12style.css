@@ -101,7 +101,7 @@ h1, h2, h3, h4, h5, h6 {
 #hero {
   width: 100%;
   height: calc(100vh - 72px);
-  background: url("../img/hero-bg.jpg") center center;
+  background: url("https://raw.githubusercontent.com/harshvshah12/Hostel-Web/main/static/img/hero-bg.jpg") center center;
   background-size: cover;
   position: relative;
   padding: 0;
