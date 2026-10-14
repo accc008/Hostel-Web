@@ -25,7 +25,17 @@ app = Flask(
 )
 
 # Security and session configuration
-app.secret_key = os.environ.get("SECRET_KEY", "hostel-management-production-key-2026-strict")
+# Never ship a predictable session-signing key to production.
+_secret_key = os.environ.get("SECRET_KEY")
+if not _secret_key:
+    if os.environ.get("VERCEL"):
+        raise RuntimeError(
+            "SECRET_KEY is required in Vercel Environment Variables. "
+            "Set a long, random value before deploying."
+        )
+    # Local-only convenience; sessions are invalidated when the dev process restarts.
+    _secret_key = os.urandom(32)
+app.secret_key = _secret_key
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 if os.environ.get("VERCEL"):
